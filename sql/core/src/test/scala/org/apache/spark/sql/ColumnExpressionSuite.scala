@@ -927,6 +927,7 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
       expectedAnswer: Seq[Row],
       expectedSchema: StructType): Unit = {
 
+    df.explain(true)
     checkAnswer(df, expectedAnswer)
     assert(df.schema == expectedSchema)
   }
@@ -2072,10 +2073,42 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
       StructType(Seq(StructField("a", IntegerType, nullable = false))))
   }
 
-  test("temp bug") {
-    checkAnswer(
-      sql("SELECT named_struct('a', 1, 'b', 2) struct_col")
-        .select($"struct_col".dropFields("a").withField("a", lit(1)).getField("b")),
-      Row(2))
+  test("temp bug1 not null") {
+    val data = sql("SELECT named_struct('a', 1, 'b', 2) struct_col")
+    checkAnswerAndSchema(
+      data.select($"struct_col".dropFields("a").withField("a", lit(1)).getField("b").as("b")),
+      Row(2) :: Nil,
+      StructType(Seq(StructField("b", IntegerType, nullable = false))))
+
+    // not foldable example
+    val path = "/Users/fqaiser/temp/tempBug1.parquet"
+    data.write.mode("overwrite").parquet(path)
+
+    checkAnswerAndSchema(
+      spark.read.parquet(path)
+        .select($"struct_col".dropFields("a").withField("a", lit(1)).getField("b").as("b")),
+      Row(2) :: Nil,
+      StructType(Seq(StructField("b", IntegerType, nullable = false))))
+  }
+
+  test("temp bug2 all null") {
+    val data = sql("SELECT CAST(NULL AS struct<a:int,b:int>) struct_col")
+    checkAnswerAndSchema(
+      data.select($"struct_col".dropFields("a").getField("b").as("b")),
+      Row(null) :: Nil,
+      StructType(Seq(StructField("b", IntegerType, nullable = true))))
+
+    // not foldable example
+    val path = "/Users/fqaiser/temp/tempBug2.parquet"
+    data.write.mode("overwrite").parquet(path)
+    checkAnswerAndSchema(
+      spark.read.parquet(path)
+        .select($"struct_col".dropFields("a").withField("a", lit(1)).getField("b").as("b")),
+      Row(null) :: Nil,
+      StructType(Seq(StructField("b", IntegerType, nullable = true))))
+  }
+
+  test("temp bug3 mix of null and not null") {
+
   }
 }
