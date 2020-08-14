@@ -961,6 +961,14 @@ class Column(val expr: Expression) extends Logging {
     }
   }
 
+  // TODO: add scaladoc
+  //  note existingName can be nested, newName cannot be nested
+  def withFieldRenamed(existingName: String, newName: String): Column = withExpr {
+    require(existingName != null, "existingName cannot be null")
+    require(newName != null, "newName cannot be null")
+    updateFieldsHelper(expr, nameParts(existingName), name => WithFieldRenamed(name, newName))
+  }
+
   private def nameParts(fieldName: String): Seq[String] = {
     require(fieldName != null, "fieldName cannot be null")
 

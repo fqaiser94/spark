@@ -1801,4 +1801,281 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
         .select($"struct_col".dropFields("a.c"))
     }.getMessage should include("Ambiguous reference to fields")
   }
+
+  test("withFieldRenamed should throw an exception if called on a non-StructType column") {
+    intercept[AnalysisException] {
+      testData.withColumn("key", $"key".withFieldRenamed("a", "d"))
+    }.getMessage should include("struct argument should be struct type, got: int")
+  }
+
+  test("withFieldRenamed should throw an exception if existingName argument is null") {
+    intercept[IllegalArgumentException] {
+      structLevel1.withColumn("a", $"a".withFieldRenamed(null, "d"))
+    }.getMessage should include("existingName cannot be null")
+  }
+
+  test("withFieldRenamed should throw an exception if newName argument is null") {
+    intercept[IllegalArgumentException] {
+      structLevel1.withColumn("a", $"a".withFieldRenamed("a", null))
+    }.getMessage should include("newName cannot be null")
+  }
+
+  test("withFieldRenamed should throw an exception if both existingName and newName arguments " +
+    "are null") {
+    intercept[IllegalArgumentException] {
+      structLevel1.withColumn("a", $"a".withFieldRenamed(null, null))
+    }.getMessage should include("existingName cannot be null")
+  }
+
+  test("withFieldRenamed should throw an exception if any intermediate structs don't exist") {
+    intercept[AnalysisException] {
+      structLevel2.withColumn("a", 'a.withFieldRenamed("x.b", "d"))
+    }.getMessage should include("No such struct field x in a")
+
+    intercept[AnalysisException] {
+      structLevel3.withColumn("a", 'a.withFieldRenamed("a.x.b", "d"))
+    }.getMessage should include("No such struct field x in a")
+  }
+
+  test("withFieldRenamed should throw an exception if intermediate field is not a struct") {
+    intercept[AnalysisException] {
+      structLevel1.withColumn("a", 'a.withFieldRenamed("b.a", "d"))
+    }.getMessage should include("struct argument should be struct type, got: int")
+  }
+
+  test("withFieldRenamed should throw an exception if intermediate field reference is ambiguous") {
+    intercept[AnalysisException] {
+      val structLevel2: DataFrame = spark.createDataFrame(
+        sparkContext.parallelize(Row(Row(Row(1, null, 3), 4)) :: Nil),
+        StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", structType, nullable = false),
+            StructField("a", structType, nullable = false))),
+            nullable = false))))
+
+      structLevel2.withColumn("a", 'a.withFieldRenamed("a.b", "d"))
+    }.getMessage should include("Ambiguous reference to fields")
+  }
+
+  test("withFieldRenamed should rename field in struct") {
+    checkAnswerAndSchema(
+      structLevel1.withColumn("a", 'a.withFieldRenamed("b", "d")),
+      Row(Row(1, null, 3)) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", IntegerType, nullable = false),
+          StructField("d", IntegerType, nullable = true),
+          StructField("c", IntegerType, nullable = false))),
+          nullable = false))))
+  }
+
+  test("withFieldRenamed should rename field in null struct") {
+    checkAnswerAndSchema(
+      nullStructLevel1.withColumn("a", $"a".withFieldRenamed("b", "d")),
+      Row(null) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", IntegerType, nullable = false),
+          StructField("d", IntegerType, nullable = true),
+          StructField("c", IntegerType, nullable = false))),
+          nullable = true))))
+  }
+
+  test("withFieldRenamed should rename multiple fields in struct") {
+    checkAnswerAndSchema(
+      structLevel1.withColumn("a", $"a".withFieldRenamed("b", "d").withFieldRenamed("c", "e")),
+      Row(Row(1, null, 3)) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", IntegerType, nullable = false),
+          StructField("d", IntegerType, nullable = true),
+          StructField("e", IntegerType, nullable = false))),
+          nullable = false))))
+  }
+
+  test("withFieldRenamed should rename field in nested struct") {
+    checkAnswerAndSchema(
+      structLevel2.withColumn("a", 'a.withFieldRenamed("a.b", "d")),
+      Row(Row(Row(1, null, 3))) :: Nil,
+      StructType(
+        Seq(StructField("a", StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", IntegerType, nullable = false),
+            StructField("d", IntegerType, nullable = true),
+            StructField("c", IntegerType, nullable = false))),
+            nullable = false))),
+          nullable = false))))
+  }
+
+  test("withFieldRenamed should rename field in nested null struct") {
+    checkAnswerAndSchema(
+      nullStructLevel2.withColumn("a", $"a".withFieldRenamed("a.b", "d")),
+      Row(Row(null)) :: Nil,
+      StructType(
+        Seq(StructField("a", StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", IntegerType, nullable = false),
+            StructField("d", IntegerType, nullable = true),
+            StructField("c", IntegerType, nullable = false))),
+            nullable = true))),
+          nullable = false))))
+  }
+
+  test("withFieldRenamed should rename field in deeply nested struct") {
+    checkAnswerAndSchema(
+      structLevel3.withColumn("a", 'a.withFieldRenamed("a.a.b", "d")),
+      Row(Row(Row(Row(1, null, 3)))) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", StructType(Seq(
+              StructField("a", IntegerType, nullable = false),
+              StructField("d", IntegerType, nullable = true),
+              StructField("c", IntegerType, nullable = false))),
+              nullable = false))),
+            nullable = false))),
+          nullable = false))))
+  }
+
+  test("withFieldRenamed should rename all fields with given name in struct") {
+    val structLevel1 = spark.createDataFrame(
+      sparkContext.parallelize(Row(Row(1, 2, 3)) :: Nil),
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", IntegerType, nullable = false),
+          StructField("b", IntegerType, nullable = false),
+          StructField("b", IntegerType, nullable = false))),
+          nullable = false))))
+
+    checkAnswerAndSchema(
+      structLevel1.withColumn("a", 'a.withFieldRenamed("b", "d")),
+      Row(Row(1, 2, 3)) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", IntegerType, nullable = false),
+          StructField("d", IntegerType, nullable = false),
+          StructField("d", IntegerType, nullable = false))),
+          nullable = false))))
+  }
+
+  test("withFieldRenamed should rename field in struct even if casing is different") {
+    withSQLConf(SQLConf.CASE_SENSITIVE.key -> "false") {
+      checkAnswerAndSchema(
+        mixedCaseStructLevel1.withColumn("a", 'a.withFieldRenamed("A", "d")),
+        Row(Row(1, 1)) :: Nil,
+        StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("d", IntegerType, nullable = false),
+            StructField("B", IntegerType, nullable = false))),
+            nullable = false))))
+
+      checkAnswerAndSchema(
+        mixedCaseStructLevel1.withColumn("a", 'a.withFieldRenamed("b", "d")),
+        Row(Row(1, 1)) :: Nil,
+        StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", IntegerType, nullable = false),
+            StructField("d", IntegerType, nullable = false))),
+            nullable = false))))
+    }
+  }
+
+  test("withFieldRenamed should not rename field in struct because casing is different") {
+    withSQLConf(SQLConf.CASE_SENSITIVE.key -> "true") {
+      checkAnswerAndSchema(
+        mixedCaseStructLevel1.withColumn("a", 'a.withFieldRenamed("A", "d")),
+        Row(Row(1, 1)) :: Nil,
+        StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", IntegerType, nullable = false),
+            StructField("B", IntegerType, nullable = false))),
+            nullable = false))))
+
+      checkAnswerAndSchema(
+        mixedCaseStructLevel1.withColumn("a", 'a.withFieldRenamed("b", "d")),
+        Row(Row(1, 1)) :: Nil,
+        StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", IntegerType, nullable = false),
+            StructField("B", IntegerType, nullable = false))),
+            nullable = false))))
+    }
+  }
+
+  test("withFieldRenamed should rename nested field in struct even if casing is different") {
+    withSQLConf(SQLConf.CASE_SENSITIVE.key -> "false") {
+      checkAnswerAndSchema(
+        mixedCaseStructLevel2.withColumn("a", 'a.withFieldRenamed("A.a", "d")),
+        Row(Row(Row(1, 1), Row(1, 1))) :: Nil,
+        StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("A", StructType(Seq(
+              StructField("d", IntegerType, nullable = false),
+              StructField("b", IntegerType, nullable = false))),
+              nullable = false),
+            StructField("B", StructType(Seq(
+              StructField("a", IntegerType, nullable = false),
+              StructField("b", IntegerType, nullable = false))),
+              nullable = false))),
+            nullable = false))))
+
+      checkAnswerAndSchema(
+        mixedCaseStructLevel2.withColumn("a", 'a.withFieldRenamed("b.a", "d")),
+        Row(Row(Row(1, 1), Row(1, 1))) :: Nil,
+        StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", StructType(Seq(
+              StructField("a", IntegerType, nullable = false),
+              StructField("b", IntegerType, nullable = false))),
+              nullable = false),
+            StructField("b", StructType(Seq(
+              StructField("d", IntegerType, nullable = false),
+              StructField("b", IntegerType, nullable = false))),
+              nullable = false))),
+            nullable = false))))
+    }
+  }
+
+  test("withFieldRenamed should throw an exception because casing is different") {
+    withSQLConf(SQLConf.CASE_SENSITIVE.key -> "true") {
+      intercept[AnalysisException] {
+        mixedCaseStructLevel2.withColumn("a", 'a.withFieldRenamed("A.a", "d"))
+      }.getMessage should include("No such struct field A in a, B")
+
+      intercept[AnalysisException] {
+        mixedCaseStructLevel2.withColumn("a", 'a.withFieldRenamed("b.a", "d"))
+      }.getMessage should include("No such struct field b in a, B")
+    }
+  }
+
+  test("withFieldRenamed should do nothing if field with existingName doesn't exist") {
+    checkAnswerAndSchema(
+      structLevel1.withColumn("a", 'a.withFieldRenamed("d", "e")),
+      Row(Row(1, null, 3)) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", IntegerType, nullable = false),
+          StructField("b", IntegerType, nullable = true),
+          StructField("c", IntegerType, nullable = false))),
+          nullable = false))))
+  }
+
+  test("withFieldRenamed user-facing examples") {
+
+  }
+
+  test("temp") {
+    checkAnswerAndSchema(
+      structLevel1.withColumn("a", 'a.dropFields("b").withField("b", lit(2))
+        .withFieldRenamed("b", "d").getField("d")),
+      Row(2) :: Nil,
+      StructType(Seq(StructField("a", IntegerType, nullable = false))))
+  }
+
+  test("temp bug") {
+    checkAnswer(
+      sql("SELECT named_struct('a', 1, 'b', 2) struct_col")
+        .select($"struct_col".dropFields("a").withField("a", lit(1)).getField("b")),
+      Row(Row(2)))
+  }
 }
