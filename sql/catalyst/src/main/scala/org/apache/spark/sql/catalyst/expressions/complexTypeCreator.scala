@@ -551,7 +551,13 @@ trait StructFieldsOperation {
    * Returns an updated list of expressions which will ultimately be used as the children argument
    * for [[CreateNamedStruct]].
    */
-  def apply(exprs: Seq[(String, Expression)]): Seq[(String, Expression)]
+  def updateExpressions(exprs: Seq[(String, Expression)]): Seq[(String, Expression)]
+
+  /**
+   * Returns an updated list of StructFields which will ultimately be used as the fields argument
+   * for [[StructType]].
+   */
+  def updateFields(fields: Seq[(String, StructField)]): Seq[(String, StructField)]
 }
 
 /**
@@ -563,15 +569,21 @@ trait StructFieldsOperation {
 case class WithField(name: String, valExpr: Expression)
   extends Unevaluable with StructFieldsOperation {
 
-  override def apply(exprs: Seq[(String, Expression)]): Seq[(String, Expression)] =
-    if (exprs.exists(x => resolver(x._1, name))) {
-      exprs.map {
-        case (existingName, _) if resolver(existingName, name) => (name, valExpr)
+  private def update[T](values: Seq[(String, T)], newValue: T): Seq[(String, T)] =
+    if (values.exists(x => resolver(x._1, name))) {
+      values.map {
+        case (existingName, _) if resolver(existingName, name) => (name, newValue)
         case x => x
       }
     } else {
-      exprs :+ (name, valExpr)
+      values :+ (name, newValue)
     }
+
+  override def updateExpressions(exprs: Seq[(String, Expression)]): Seq[(String, Expression)] =
+    update(exprs, valExpr)
+
+  override def updateFields(fields: Seq[(String, StructField)]): Seq[(String, StructField)] =
+    update(fields, StructField(name, valExpr.dataType, valExpr.nullable))
 
   override def children: Seq[Expression] = valExpr :: Nil
 
@@ -586,17 +598,31 @@ case class WithField(name: String, valExpr: Expression)
  * Drop a field by name.
  */
 case class DropField(name: String) extends StructFieldsOperation {
-  override def apply(exprs: Seq[(String, Expression)]): Seq[(String, Expression)] =
-    exprs.filterNot(expr => resolver(expr._1, name))
+
+  private def update[T](values: Seq[(String, T)]): Seq[(String, T)] =
+    values.filterNot(expr => resolver(expr._1, name))
+
+  override def updateExpressions(exprs: Seq[(String, Expression)]): Seq[(String, Expression)] =
+    update(exprs)
+
+  override def updateFields(fields: Seq[(String, StructField)]): Seq[(String, StructField)] =
+    update(fields)
 }
 
 /**
  * Rename a field by name.
  */
 case class WithFieldRenamed(existingName: String, newName: String) extends StructFieldsOperation {
-  override def apply(exprs: Seq[(String, Expression)]): Seq[(String, Expression)] =
+
+  override def updateExpressions(exprs: Seq[(String, Expression)]): Seq[(String, Expression)] =
     exprs.map {
       case (name, expr) if resolver(name, existingName) => (newName, expr)
+      case x => x
+    }
+
+  override def updateFields(fields: Seq[(String, StructField)]): Seq[(String, StructField)] =
+    fields.map {
+      case (name, field) if resolver(name, existingName) => (newName, field.copy(name = newName))
       case x => x
     }
 }
@@ -623,7 +649,11 @@ case class UpdateFields(structExpr: Expression, fieldOps: Seq[StructFieldsOperat
     case e: Expression => e
   }
 
-  override def dataType: StructType = evalExpr.dataType.asInstanceOf[StructType]
+  override def dataType: StructType = {
+    val existingFields = structExpr.dataType.asInstanceOf[StructType].map(f => (f.name, f))
+    val newFields = fieldOps.foldLeft(existingFields)((fields, op) => op.updateFields(fields))
+    StructType(newFields.map(_._2))
+  }
 
   override def nullable: Boolean = structExpr.nullable
 
@@ -631,14 +661,11 @@ case class UpdateFields(structExpr: Expression, fieldOps: Seq[StructFieldsOperat
 
   private lazy val existingExprs: Seq[(String, Expression)] =
     structExpr.dataType.asInstanceOf[StructType].fields.zipWithIndex.map {
-      case (field, i) =>
-        // This if statement is to ensure that we retain the same nullability as the original field
-        val newStructExpr = if (field.nullable) structExpr else KnownNotNull(structExpr)
-        (field.name, GetStructField(newStructExpr, i))
+      case (field, i) => (field.name, GetStructField(structExpr, i))
     }
 
   lazy val newExprs: Seq[(String, Expression)] =
-    fieldOps.foldLeft(existingExprs)((exprs, op) => op(exprs))
+    fieldOps.foldLeft(existingExprs)((exprs, op) => op.updateExpressions(exprs))
 
   private lazy val createNamedStructExpr = CreateNamedStruct(newExprs.flatMap {
     case (name, expr) => Seq(Literal(name), expr)
