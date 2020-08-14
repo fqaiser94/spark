@@ -2076,6 +2076,6 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
     checkAnswer(
       sql("SELECT named_struct('a', 1, 'b', 2) struct_col")
         .select($"struct_col".dropFields("a").withField("a", lit(1)).getField("b")),
-      Row(Row(2)))
+      Row(2))
   }
 }

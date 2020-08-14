@@ -591,6 +591,17 @@ case class DropField(name: String) extends StructFieldsOperation {
 }
 
 /**
+ * Rename a field by name.
+ */
+case class WithFieldRenamed(existingName: String, newName: String) extends StructFieldsOperation {
+  override def apply(exprs: Seq[(String, Expression)]): Seq[(String, Expression)] =
+    exprs.map {
+      case (name, expr) if resolver(name, existingName) => (newName, expr)
+      case x => x
+    }
+}
+
+/**
  * Updates fields in struct by name.
  */
 case class UpdateFields(structExpr: Expression, fieldOps: Seq[StructFieldsOperation])
@@ -619,11 +630,15 @@ case class UpdateFields(structExpr: Expression, fieldOps: Seq[StructFieldsOperat
   override def prettyName: String = "update_fields"
 
   private lazy val existingExprs: Seq[(String, Expression)] =
-    structExpr.dataType.asInstanceOf[StructType].fieldNames.zipWithIndex.map {
-      case (name, i) => (name, GetStructField(KnownNotNull(structExpr), i))
+    structExpr.dataType.asInstanceOf[StructType].fields.zipWithIndex.map {
+      case (field, i) =>
+        // This if statement is to ensure that we retain the same nullability as the original field
+        val newStructExpr = if (field.nullable) structExpr else KnownNotNull(structExpr)
+        (field.name, GetStructField(newStructExpr, i))
     }
 
-  private lazy val newExprs = fieldOps.foldLeft(existingExprs)((exprs, op) => op(exprs))
+  lazy val newExprs: Seq[(String, Expression)] =
+    fieldOps.foldLeft(existingExprs)((exprs, op) => op(exprs))
 
   private lazy val createNamedStructExpr = CreateNamedStruct(newExprs.flatMap {
     case (name, expr) => Seq(Literal(name), expr)

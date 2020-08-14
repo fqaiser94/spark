@@ -467,14 +467,19 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
     // drop attribute, add attribute, extract an attribute from the original struct
     val query3 = testStructRelation.select(GetStructField(UpdateFields('struct1, DropField("b") ::
       WithField("c", Literal(2)) :: Nil), 0, None) as "outerAtt")
-    // drop attribute, add attribute, extract an attribute from the original struct
-    val query4 = testStructRelation.select(GetStructField(UpdateFields('struct1, DropField("a") ::
-      WithField("a", Literal(1)) :: Nil), 0, None) as "outerAtt")
-    val expected = testStructRelation.select(GetStructField('struct1, 0, None) as "outerAtt")
+    val expected1 = testStructRelation.select(GetStructField('struct1, 0, None) as
+      "outerAtt")
 
-    Seq(query1, query2, query3, query4).foreach {
-      query => checkRule(query, expected)
+    Seq(query1, query2, query3).foreach {
+      query => checkRule(query, expected1)
     }
+
+    // drop attribute, add attribute, extract an attribute from the original struct
+    checkRule(
+      testStructRelation.select(GetStructField(UpdateFields('struct1, DropField("a") ::
+        WithField("a", Literal(1)) :: Nil), 0, None) as "outerAtt"),
+      testStructRelation.select(GetStructField('struct1, 1, None) as
+        "outerAtt"))
   }
 
   test("simplify GetStructField on UpdateFields that is modifying the attribute being extracted") {
@@ -510,7 +515,9 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
         GetStructField('struct2, 0, Some("a")) as "struct1A",
         GetStructField('struct2, 1, Some("b")) as "struct1B")
     val expected = testStructRelation
-      .select(GetStructField('struct1, 0, Some("a")) as "struct1A", Literal(2) as "struct1B")
+      .select(
+        GetStructField('struct1, 0, None) as "struct1A",
+        Literal(2) as "struct1B")
     checkRule(query, expected)
   }
 
@@ -526,8 +533,8 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
         GetStructField('struct3, 1, Some("b")) as "struct3B")
     val expected = testStructRelation
       .select(
-        GetStructField('struct1, 0, Some("a")) as "struct2A", Literal(2) as "struct2B",
-        GetStructField('struct1, 0, Some("a")) as "struct3A", Literal(3) as "struct3B")
+        GetStructField('struct1, 0, None) as "struct2A", Literal(2) as "struct2B",
+        GetStructField('struct1, 0, None) as "struct3A", Literal(3) as "struct3B")
     checkRule(query, expected)
   }
 }

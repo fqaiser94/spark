@@ -39,18 +39,13 @@ object SimplifyExtractValueOps extends Rule[LogicalPlan] {
       // Remove redundant field extraction.
       case GetStructField(createNamedStruct: CreateNamedStruct, ordinal, _) =>
         createNamedStruct.valExprs(ordinal)
-      case GetStructField(u: UpdateFields, ordinal, maybeName) =>
-        val name = u.dataType(ordinal).name
-        val matches = u.fieldOps.collect { case w: WithField if w.name == name => w }
-        if (matches.nonEmpty) {
-          // return last matching element as that is the final value for the field being extracted.
-          // For example, if a user submits a query like this:
-          // `$"struct_col".withField("b", lit(1)).withField("b", lit(2)).getField("b")`
-          // we want to return `lit(2)` (and not `lit(1)`).
-          matches.last.valExpr
-        } else {
-          GetStructField(u.structExpr, ordinal, maybeName)
-        }
+      case GetStructField(updateFields: UpdateFields, ordinal, _) =>
+        // return last matching element as that is the final value for the field being extracted.
+        // For example, if a user submits a query like this:
+        // `$"struct_col".withField("b", lit(1)).withField("b", lit(2)).getField("b")`
+        // we want to return `lit(2)` (and not `lit(1)`).
+        val name = updateFields.dataType(ordinal).name
+        updateFields.newExprs.collect { case (exprName, expr) if exprName == name => expr }.last
       // Remove redundant array indexing.
       case GetArrayStructFields(CreateArray(elems, useStringTypeWhenEmpty), field, ordinal, _, _) =>
         // Instead of selecting the field on the entire array, select it from each member
