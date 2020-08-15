@@ -647,7 +647,7 @@ case class UpdateFields(structExpr: Expression, fieldOps: Seq[StructFieldsOperat
   })
 
   lazy val evalExpr: Expression = if (structExpr.nullable) {
-    If(IsNull(structExpr), Literal(null, createNamedStructExpr.dataType), createNamedStructExpr)
+    If(IsNull(structExpr), Literal(null, dataType), createNamedStructExpr)
   } else {
     createNamedStructExpr
   }
