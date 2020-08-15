@@ -567,7 +567,7 @@ case class WithField(name: String, valExpr: Expression)
   private lazy val newFieldExpr = (StructField(name, valExpr.dataType, valExpr.nullable), valExpr)
 
   override def apply(values: Seq[(StructField, Expression)]): Seq[(StructField, Expression)] =
-    if (values.exists(x => resolver(x._1.name, name))) {
+    if (values.exists { case (field, _) => resolver(field.name, name) }) {
       values.map {
         case (field, _) if resolver(field.name, name) => newFieldExpr
         case x => x
@@ -637,14 +637,18 @@ case class UpdateFields(structExpr: Expression, fieldOps: Seq[StructFieldsOperat
       case (field, i) => (field, GetStructField(structExpr, i))
     }
 
-  lazy val (newFields, newExprs) =
-    fieldOps.foldLeft(existingFieldExprs)((exprs, op) => op.apply(exprs)).unzip
+  private lazy val newFieldExprs: Seq[(StructField, Expression)] =
+    fieldOps.foldLeft(existingFieldExprs)((exprs, op) => op.apply(exprs))
 
-  private lazy val createStructExpr = CreateStruct(newExprs)
+  lazy val (newFields, newExprs): (Seq[StructField], Seq[Expression]) = newFieldExprs.unzip
+
+  private lazy val createNamedStructExpr = CreateNamedStruct(newFieldExprs.flatMap {
+    case (field, expr) => Seq(Literal(field.name), expr)
+  })
 
   lazy val evalExpr: Expression = if (structExpr.nullable) {
-    If(IsNull(structExpr), Literal(null, createStructExpr.dataType), createStructExpr)
+    If(IsNull(structExpr), Literal(null, createNamedStructExpr.dataType), createNamedStructExpr)
   } else {
-    createStructExpr
+    createNamedStructExpr
   }
 }
