@@ -927,7 +927,6 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
       expectedAnswer: Seq[Row],
       expectedSchema: StructType): Unit = {
 
-    df.explain(true)
     checkAnswer(df, expectedAnswer)
     assert(df.schema == expectedSchema)
   }
