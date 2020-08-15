@@ -549,8 +549,8 @@ trait StructFieldsOperation {
 
   /**
    * Returns an updated list of StructFields and Expressions that will ultimately be used
-   * as the fields argument for [[StructType]] and as the children argument for [[CreateStruct]]
-   * respectively inside of [[UpdateFields]].
+   * as the fields argument for [[StructType]] and as the children argument for
+   * [[CreateNamedStruct]] respectively inside of [[UpdateFields]].
    */
   def apply(values: Seq[(StructField, Expression)]): Seq[(StructField, Expression)]
 }
@@ -564,9 +564,8 @@ trait StructFieldsOperation {
 case class WithField(name: String, valExpr: Expression)
   extends Unevaluable with StructFieldsOperation {
 
-  private lazy val newFieldExpr = (StructField(name, valExpr.dataType, valExpr.nullable), valExpr)
-
-  override def apply(values: Seq[(StructField, Expression)]): Seq[(StructField, Expression)] =
+  override def apply(values: Seq[(StructField, Expression)]): Seq[(StructField, Expression)] = {
+    val newFieldExpr = (StructField(name, valExpr.dataType, valExpr.nullable), valExpr)
     if (values.exists { case (field, _) => resolver(field.name, name) }) {
       values.map {
         case (field, _) if resolver(field.name, name) => newFieldExpr
@@ -575,6 +574,7 @@ case class WithField(name: String, valExpr: Expression)
     } else {
       values :+ newFieldExpr
     }
+  }
 
   override def children: Seq[Expression] = valExpr :: Nil
 
