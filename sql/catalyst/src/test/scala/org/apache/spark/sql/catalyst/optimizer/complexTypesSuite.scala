@@ -732,10 +732,10 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
 
       structLevel2.select(
         UpdateFields('a1, Seq(
-          // scalastyle:off line.size.limit
           WithField("a2", repeatedExpr),
-          WithField("a2", UpdateFields(If(IsNull('a1), Literal(null, repeatedExprDataType), repeatedExpr), WithField("c3", Literal(3)) :: Nil))
-          // scalastyle:on line.size.limit
+          WithField("a2", UpdateFields(
+            If(IsNull('a1), Literal(null, repeatedExprDataType), repeatedExpr),
+            WithField("c3", Literal(3)) :: Nil))
         )).as("a1"))
     }
 
@@ -797,10 +797,10 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
 
       structLevel2.select(
         UpdateFields('a1, Seq(
-          // scalastyle:off line.size.limit
           WithField("a2", repeatedExpr),
-          WithField("a2", UpdateFields(If(IsNull('a1), Literal(null, repeatedExprDataType), repeatedExpr), DropField("c3") :: Nil))
-          // scalastyle:on line.size.limit
+          WithField("a2", UpdateFields(
+            If(IsNull('a1), Literal(null, repeatedExprDataType), repeatedExpr),
+            DropField("c3") :: Nil))
         )).as("a1"))
     }
 
