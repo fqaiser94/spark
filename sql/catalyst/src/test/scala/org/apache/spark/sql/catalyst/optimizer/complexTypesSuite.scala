@@ -725,17 +725,13 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
     }
 
     val expected = {
-      val repeatedExpr = UpdateFields(GetStructField('a1, 0), WithField("b3", Literal(2)) :: Nil)
-      val repeatedExprDataType = StructType(Seq(
-        StructField("a3", IntegerType, nullable = false),
-        StructField("b3", IntegerType, nullable = false)))
 
       structLevel2.select(
         UpdateFields('a1, Seq(
-          WithField("a2", repeatedExpr),
+          WithField("a2", UpdateFields(GetStructField('a1, 0), WithField("b3", Literal(2)) :: Nil)),
           WithField("a2", UpdateFields(
-            If(IsNull('a1), Literal(null, repeatedExprDataType), repeatedExpr),
-            WithField("c3", Literal(3)) :: Nil))
+            GetStructField('a1, 0),
+            WithField("b3", Literal(2)) :: WithField("c3", Literal(3)) :: Nil))
         )).as("a1"))
     }
 
@@ -751,8 +747,9 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
       ).notNull)
 
     val query = {
-      val dropA1A2B = UpdateFields('a1, Seq(WithField("a2", UpdateFields(
-        GetStructField('a1, 0), Seq(DropField("b3"))))))
+      val dropA1A2B = UpdateFields('a1, Seq(WithField("a2",
+        UpdateFields(GetStructField('a1, 0), Seq(DropField("b3")))
+      )))
 
       structLevel2.select(
         UpdateFields(
@@ -779,8 +776,9 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
       ))
 
     val query = {
-      val dropA1A2B = UpdateFields('a1, Seq(WithField("a2", UpdateFields(
-        GetStructField('a1, 0), Seq(DropField("b3"))))))
+      val dropA1A2B = UpdateFields('a1, Seq(WithField("a2",
+        UpdateFields(GetStructField('a1, 0), Seq(DropField("b3")))
+      )))
 
       structLevel2.select(
         UpdateFields(
@@ -790,20 +788,96 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
     }
 
     val expected = {
-      val repeatedExpr = UpdateFields(GetStructField('a1, 0), DropField("b3") :: Nil)
-      val repeatedExprDataType = StructType(Seq(
-        StructField("a3", IntegerType, nullable = false),
-        StructField("c3", IntegerType, nullable = false)))
-
       structLevel2.select(
         UpdateFields('a1, Seq(
-          WithField("a2", repeatedExpr),
+          WithField("a2", UpdateFields(GetStructField('a1, 0), DropField("b3") :: Nil)),
           WithField("a2", UpdateFields(
-            If(IsNull('a1), Literal(null, repeatedExprDataType), repeatedExpr),
-            DropField("c3") :: Nil))
+            GetStructField('a1, 0),
+            DropField("b3") :: DropField("c3") :: Nil))
         )).as("a1"))
     }
 
     checkRule(query, expected)
+  }
+
+  test("temp") {
+    val structLevel2 = LocalRelation(
+      'a1.struct('a2.struct('a3.int.notNull, 'b3.int.notNull, 'c3.int.notNull)),
+      'b1.struct('a2.struct('a3.int.notNull, 'b3.int.notNull, 'c3.int.notNull))
+    )
+
+    val dropA1A2B = UpdateFields('a1, Seq(WithField("a2",
+      UpdateFields(GetStructField('a1, 0), Seq(DropField("b3")))
+    )))
+
+    {
+      val query = structLevel2.select(
+        GetStructField(UpdateFields('a1, Seq(WithField("a2",
+          UpdateFields(GetStructField('a1, 0), Seq(DropField("b3")))
+        ))), 0).as("a1")
+      )
+
+      val expected = structLevel2.select(
+        UpdateFields(
+          GetStructField('a1, 0),
+          DropField("b3") :: Nil
+        ).as("a1"))
+
+      checkRule(query, expected)
+    }
+
+    {
+      val query = structLevel2.select(
+        GetStructField(UpdateFields('b1, Seq(WithField("a2",
+          UpdateFields(GetStructField('a1, 0), Seq(DropField("b3")))
+        ))), 0).as("a1")
+      )
+
+      val expected = {
+        val nullDataType = StructType(Seq(
+          StructField("a3", IntegerType, nullable = false),
+          StructField("c3", IntegerType, nullable = false)
+        ))
+
+        structLevel2.select(
+          If(
+            IsNull('b1),
+            Literal(null, nullDataType),
+            UpdateFields(GetStructField('a1, 0), DropField("b3") :: Nil)
+          ).as("a1"))
+      }
+
+      checkRule(query, expected)
+    }
+
+    {
+      val query = structLevel2.select(
+          GetStructField(dropA1A2B, 0).as("a1")
+      )
+
+      val expected = structLevel2.select(
+        UpdateFields(
+          GetStructField('a1, 0),
+          DropField("b3") :: Nil
+        ).as("a1"))
+
+      checkRule(query, expected)
+    }
+
+    {
+      val query = structLevel2.select(
+        UpdateFields(
+          GetStructField(dropA1A2B, 0),
+          DropField("c3") :: Nil
+        ).as("a1"))
+
+      val expected = structLevel2.select(
+        UpdateFields(
+          GetStructField('a1, 0),
+          DropField("b3") :: DropField("c3") :: Nil
+        ).as("a1"))
+
+      checkRule(query, expected)
+    }
   }
 }
