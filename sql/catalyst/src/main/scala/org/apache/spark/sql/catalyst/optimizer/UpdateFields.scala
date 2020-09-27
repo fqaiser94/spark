@@ -29,9 +29,6 @@ object CombineUpdateFields extends Rule[LogicalPlan] {
   def apply(plan: LogicalPlan): LogicalPlan = plan transformAllExpressions {
     case UpdateFields(UpdateFields(struct, fieldOps1), fieldOps2) =>
       UpdateFields(struct, fieldOps1 ++ fieldOps2)
-    case If(IsNull(s1), Literal(null, _), uf @ UpdateFields(gsf: GetStructField, _)) if
-    gsf.child.semanticEquals(s1) =>
-      uf
   }
 }
 
