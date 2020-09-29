@@ -2218,4 +2218,36 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
         .select($"a".withField("z", $"a.c")).as("a")
     }.getMessage should include("No such struct field c in a, b;")
   }
+
+  test("temp") {
+    // optimizes perfectly
+    checkAnswer(
+      structLevel2
+        .select($"a".withField("a", $"a.a".withField("b", lit(100))).as("a"))
+        .select($"a".withField("a", $"a.a".withField("b", lit(200))).as("a")),
+      Row(Row(Row(1, 200, 3))) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", IntegerType, nullable = false),
+            StructField("b", IntegerType, nullable = false),
+            StructField("c", IntegerType, nullable = false))),
+            nullable = false))),
+          nullable = false))))
+
+    // doesn't optimize well
+    checkAnswer(
+      nullableStructLevel2
+        .select($"a".withField("a", $"a.a".withField("b", lit(100))).as("a"))
+        .select($"a".withField("a", $"a.a".withField("b", lit(200))).as("a")),
+      Row(null) :: Row(Row(null)) :: Row(Row(Row(1, 200, 3))) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", IntegerType, nullable = false),
+            StructField("b", IntegerType, nullable = false),
+            StructField("c", IntegerType, nullable = false))),
+            nullable = true))),
+          nullable = true))))
+  }
 }
