@@ -41,14 +41,15 @@ object SimplifyExtractValueOps extends Rule[LogicalPlan] {
       case GetStructField(createNamedStruct: CreateNamedStruct, ordinal, _) =>
         createNamedStruct.valExprs(ordinal)
       case GetStructField(u: UpdateFields, ordinal, _)if !u.structExpr.isInstanceOf[UpdateFields] =>
-        val structExpr = u.structExpr
+        val struct = u.structExpr
         u.newExprs(ordinal) match {
           // if the struct itself is null, then any value extracted from it (expr) will be null
           // so we don't need to wrap expr in If(IsNull(struct), Literal(null, expr.dataType), expr)
-          case expr: GetStructField if expr.child.semanticEquals(structExpr) => expr
-          case uf @ UpdateFields(gsf: GetStructField, _) if gsf.child.semanticEquals(structExpr) =>
-            uf
-          case expr => If(IsNull(structExpr), Literal(null, expr.dataType), expr)
+          case expr: GetStructField if expr.child.semanticEquals(struct) => expr
+          case expr @ UpdateFields(gsf: GetStructField, _) if gsf.child.semanticEquals(struct) =>
+            expr
+          case expr if !struct.nullable => expr
+          case expr => If(IsNull(struct), Literal(null, expr.dataType), expr)
         }
       // Remove redundant array indexing.
       case GetArrayStructFields(CreateArray(elems, useStringTypeWhenEmpty), field, ordinal, _, _) =>
