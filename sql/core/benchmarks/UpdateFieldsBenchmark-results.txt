@@ -1,15 +1,15 @@
 ================================================================================================
-Add 2 columns and drop 2 columns at 3 different depths of nesting
+Add 2 columns and drop 2 columns at 10 different depths of nesting
 ================================================================================================
 
 OpenJDK 64-Bit Server VM 1.8.0_212-b03 on Mac OS X 10.14.6
 Intel(R) Core(TM) i7-7820HQ CPU @ 2.90GHz
-Add 2 columns and drop 2 columns at 3 different depths of nesting:  Best Time(ms)   Avg Time(ms)   Stdev(ms)    Rate(M/s)   Per Row(ns)   Relative
--------------------------------------------------------------------------------------------------------------------------------------------------
-To non-nullable StructTypes using performant method                            6              9           2          0.0      Infinity       1.0X
-To nullable StructTypes using performant method                                6              8           2          0.0      Infinity       1.1X
-To non-nullable StructTypes using non-performant method                      285            315          17          0.0      Infinity       0.0X
-To nullable StructTypes using non-performant method                          283            334          38          0.0      Infinity       0.0X
+Add 2 columns and drop 2 columns at 10 different depths of nesting:  Best Time(ms)   Avg Time(ms)   Stdev(ms)    Rate(M/s)   Per Row(ns)   Relative
+--------------------------------------------------------------------------------------------------------------------------------------------------
+To non-nullable StructTypes using performant method                            14             15           1          0.0      Infinity       1.0X
+To nullable StructTypes using performant method                                14             14           1          0.0      Infinity       1.0X
+To non-nullable StructTypes using non-performant method                       183            185           2          0.0      Infinity       0.1X
+To nullable StructTypes using non-performant method                           183            185           2          0.0      Infinity       0.1X
 
 
 ================================================================================================
@@ -20,7 +20,7 @@ OpenJDK 64-Bit Server VM 1.8.0_212-b03 on Mac OS X 10.14.6
 Intel(R) Core(TM) i7-7820HQ CPU @ 2.90GHz
 Add 50 columns and drop 50 columns at 100 different depths of nesting:  Best Time(ms)   Avg Time(ms)   Stdev(ms)    Rate(M/s)   Per Row(ns)   Relative
 -----------------------------------------------------------------------------------------------------------------------------------------------------
-To non-nullable StructTypes using performant method                             3312           3933         879          0.0      Infinity       1.0X
-To nullable StructTypes using performant method                                 3175           3309         190          0.0      Infinity       1.0X
+To non-nullable StructTypes using performant method                             2789           3072         399          0.0      Infinity       1.0X
+To nullable StructTypes using performant method                                 2726           2727           2          0.0      Infinity       1.0X
 
 

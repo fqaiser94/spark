@@ -208,7 +208,7 @@ object UpdateFieldsBenchmark extends SqlBasedBenchmark {
     // scales extremely poorly with the number of nested columns being added/dropped.
     updateFieldsBenchmark(
       methods = Seq(Performant, NonPerformant),
-      maxDepth = 3,
+      maxDepth = 10,
       initialNumberOfColumns = 5,
       numsToAdd = 5 to 6,
       numsToDrop = 3 to 4)

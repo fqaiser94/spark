@@ -1045,9 +1045,16 @@ class Column(val expr: Expression) extends Logging {
       structExpr match {
         case u: UpdateFields =>
           // TODO: doesn't handle DropField case properly
-          findOpWithName(u.fieldOps, fieldName) match {
-            case Some(op) =>
-              u.copy(fieldOps = u.fieldOps.dropWhile(_ == op) :+ WithField(fieldName, newValue))
+          findLastWithField(u.fieldOps, fieldName) match {
+            case Some(withField) =>
+              val newValue = updateFieldsHelper(
+                structExpr = withField.valExpr,
+                namePartsRemaining = namePartsRemaining.tail,
+                valueFunc = valueFunc)
+              val newFieldOps = u.fieldOps.dropWhile(_ == withField) :+
+                WithField(fieldName, newValue)
+
+              u.copy(fieldOps = newFieldOps)
             case None =>
               u.copy(fieldOps = u.fieldOps :+ WithField(fieldName, newValue))
           }
@@ -1069,15 +1076,14 @@ class Column(val expr: Expression) extends Logging {
 //    UpdateFields(UnresolvedExtractValue(prev, Literal("a2"))), Seq(WithField("c3", Literal(20)))))
 //  )
 
-  def findOpWithName(
+  def findLastWithField(
       ops: Seq[StructFieldsOperation],
       fieldName: String
-    ): Option[StructFieldsOperation] =
+    ): Option[WithField] =
     // TODO: should we really use collectFirst? or find? find_all? reverse?
-    ops.collectFirst {
+    ops.reverse.collectFirst {
       // TODO: use resolver
       case w: WithField if fieldName == w.name => w
-      case d: DropField if fieldName == d.name => d
     }
 
   /**
