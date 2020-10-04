@@ -2250,4 +2250,18 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
             nullable = true))),
           nullable = true))))
   }
+
+  test("correct-ness") {
+    // TODO: structLevel2
+
+    checkAnswer(
+      nullableStructLevel2
+        .select($"a".withField("a.b", lit(2)).as("a"))
+        .select($"a.a.b".as("b")),
+      Row(null) :: Row(null) :: Row(2) :: Nil,
+      StructType(Seq(StructField("b", IntegerType, nullable = true))))
+
+    // TODO: test on a different struct
+
+  }
 }

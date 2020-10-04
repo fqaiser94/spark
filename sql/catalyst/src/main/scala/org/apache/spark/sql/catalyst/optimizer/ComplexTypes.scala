@@ -45,10 +45,7 @@ object SimplifyExtractValueOps extends Rule[LogicalPlan] {
         u.newExprs(ordinal) match {
           // if the struct itself is null, then any value extracted from it (expr) will be null
           // so we don't need to wrap expr in If(IsNull(struct), Literal(null, expr.dataType), expr)
-          case expr: GetStructField if expr.child.semanticEquals(struct) => expr
-          case expr @ UpdateFields(gsf: GetStructField, _) if gsf.child.semanticEquals(struct) =>
-            expr
-          case expr if !struct.nullable => expr
+          case expr if isChildOf(expr, struct) => expr
           case expr => If(IsNull(struct), Literal(null, expr.dataType), expr)
         }
       // Remove redundant array indexing.
@@ -71,5 +68,12 @@ object SimplifyExtractValueOps extends Rule[LogicalPlan] {
         }
       case GetMapValue(CreateMap(elems, _), key) => CaseKeyWhen(key, elems)
     }
+  }
+
+  @scala.annotation.tailrec
+  private def isChildOf(expr: Expression, struct: Expression): Boolean = expr match {
+    case e: GetStructField => e.child.semanticEquals(struct)
+    case e: UpdateFields => isChildOf(e.structExpr, struct)
+    case _ => false
   }
 }
