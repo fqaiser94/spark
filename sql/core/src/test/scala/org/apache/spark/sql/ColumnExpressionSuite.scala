@@ -2265,19 +2265,7 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
 
   }
 
-  test("temp2") {
-    checkAnswer(
-      structLevel2.select(col("a").withField("a.a", lit(10)).as("a")),
-      Row(Row(Row(10, null, 3))) :: Nil,
-      StructType(Seq(
-        StructField("a", StructType(Seq(
-          StructField("a", StructType(Seq(
-            StructField("a", IntegerType, nullable = false),
-            StructField("b", IntegerType, nullable = true),
-            StructField("c", IntegerType, nullable = false))),
-            nullable = false))),
-          nullable = false))))
-
+  test("generates nice logical plan") {
     checkAnswer(
       structLevel2.select(col("a").withField("a.a", lit(10)).withField("a.b", lit(20)).as("a")),
       Row(Row(Row(10, 20, 3))) :: Nil,
@@ -2287,6 +2275,87 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
             StructField("a", IntegerType, nullable = false),
             StructField("b", IntegerType, nullable = false),
             StructField("c", IntegerType, nullable = false))),
+            nullable = false))),
+          nullable = false))))
+  }
+
+  test("temp2") {
+    checkAnswer(
+      nullableStructLevel2.select(
+        col("a")
+          .withField("a.a", lit(10))
+          .withField("a.b", lit(20))
+          .dropFields("a.b")
+          .withField("a.b", lit(30))
+          .as("a")),
+      Row(null) :: Row(Row(null)) :: Row(Row(Row(10, 3, 30))) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", IntegerType, nullable = false),
+            StructField("c", IntegerType, nullable = false),
+            StructField("b", IntegerType, nullable = false))),
+            nullable = true))),
+          nullable = true))))
+  }
+
+  test("should add new fields in correct order") {
+    checkAnswer(
+      structLevel2.select(
+        col("a")
+          .withField("a.d", lit(10))
+          .withField("a.e", lit(20))
+          .withField("a.d", lit(40))
+          .as("a")),
+      Row(Row(Row(1, null, 3, 40, 20))) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", IntegerType, nullable = false),
+            StructField("b", IntegerType, nullable = true),
+            StructField("c", IntegerType, nullable = false),
+            StructField("d", IntegerType, nullable = false),
+            StructField("e", IntegerType, nullable = false))),
+            nullable = false))),
+          nullable = false))))
+  }
+
+  test("temp - intermediate structs") {
+    val structType = StructType(Seq(
+      StructField("a3", IntegerType, nullable = false),
+      StructField("b3", IntegerType, nullable = false)))
+
+    val df: DataFrame = spark.createDataFrame(
+      sparkContext.parallelize(Row(Row(Row(1, 2), Row(1, 2))) :: Nil),
+      StructType(Seq(
+        StructField("a1", StructType(Seq(
+          StructField("a2", structType, nullable = false),
+          StructField("b2", structType, nullable = false))),
+          nullable = false))))
+
+    df.printSchema()
+    df.show(false)
+
+    checkAnswer(
+      df.select(
+        col("a1")
+          .withField("a2.c3", lit(3))
+          .withField("b2.c3", lit(3))
+          .withField("a2.d3", lit(4))
+          .as("a1")),
+      Row(Row(Row(1, 2, 3, 4), Row(1, 2, 3))) :: Nil,
+      StructType(Seq(
+        StructField("a1", StructType(Seq(
+          StructField("a2", StructType(Seq(
+            StructField("a3", IntegerType, nullable = false),
+            StructField("b3", IntegerType, nullable = false),
+            StructField("c3", IntegerType, nullable = false),
+            StructField("d3", IntegerType, nullable = false))),
+            nullable = false),
+          StructField("b2", StructType(Seq(
+            StructField("a3", IntegerType, nullable = false),
+            StructField("b3", IntegerType, nullable = false),
+            StructField("c3", IntegerType, nullable = false))),
             nullable = false))),
           nullable = false))))
   }

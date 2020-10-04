@@ -1042,18 +1042,27 @@ class Column(val expr: Expression) extends Logging {
         namePartsRemaining = namePartsRemaining.tail,
         valueFunc = valueFunc)
 
+      // TODO: not sure if this handles WithField + DropField cases properly
       structExpr match {
         case u: UpdateFields =>
-          // TODO: not sure if this handles DropField case properly
           findLastWithField(u.fieldOps, fieldName) match {
             case Some(withField) =>
               val newOp = updateFieldsHelper(withField.valExpr, namePartsRemaining.tail, valueFunc)
-              val newFieldOps = u.fieldOps.dropWhile(_ == withField) :+ WithField(fieldName, newOp)
+              val newFieldOps = u.fieldOps :+ WithField(fieldName, newOp)
               u.copy(fieldOps = newFieldOps)
             case None =>
-              u.copy(fieldOps = u.fieldOps :+ WithField(fieldName, newOp))
+              val newOp = updateFieldsHelper(
+                structExpr = UnresolvedExtractValue(u.structExpr, Literal(fieldName)),
+                namePartsRemaining = namePartsRemaining.tail,
+                valueFunc = valueFunc)
+              UpdateFields(u.structExpr, u.fieldOps :+ WithField(fieldName, newOp))
           }
-        case e => UpdateFields(e, WithField(fieldName, newOp) :: Nil)
+        case e =>
+          val newOp = updateFieldsHelper(
+            structExpr = UnresolvedExtractValue(structExpr, Literal(fieldName)),
+            namePartsRemaining = namePartsRemaining.tail,
+            valueFunc = valueFunc)
+          UpdateFields(e, WithField(fieldName, newOp) :: Nil)
       }
     }
   }
