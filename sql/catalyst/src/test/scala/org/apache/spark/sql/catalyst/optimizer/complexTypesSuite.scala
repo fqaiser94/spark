@@ -698,8 +698,8 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
     val expected = structLevel2.select(
       UpdateFields('a1, Seq(
         // scalastyle:off line.size.limit
-        WithField("a2", UpdateFields(GetStructField('a1, 0), WithField("b3", 2) :: Nil)),
-        WithField("a2", UpdateFields(GetStructField('a1, 0), WithField("b3", 2) :: WithField("c3", 3) :: Nil))
+        WithField("a2", UpdateFields(GetStructField('a1, 0), Seq(WithField("b3", 2)))),
+        WithField("a2", UpdateFields(GetStructField('a1, 0), Seq(WithField("b3", 2), WithField("c3", 3))))
         // scalastyle:on line.size.limit
       )).as("a1"))
 
@@ -724,16 +724,13 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
             GetStructField(addB3toA1A2, 0), Seq(WithField("c3", Literal(3))))))).as("a1"))
     }
 
-    val expected = {
-
-      structLevel2.select(
-        UpdateFields('a1, Seq(
-          WithField("a2", UpdateFields(GetStructField('a1, 0), WithField("b3", Literal(2)) :: Nil)),
-          WithField("a2", UpdateFields(
-            GetStructField('a1, 0),
-            WithField("b3", Literal(2)) :: WithField("c3", Literal(3)) :: Nil))
-        )).as("a1"))
-    }
+    val expected = structLevel2.select(
+      UpdateFields('a1, Seq(
+        // scalastyle:off line.size.limit
+        WithField("a2", UpdateFields(GetStructField('a1, 0), Seq(WithField("b3", 2)))),
+        WithField("a2", UpdateFields(GetStructField('a1, 0), Seq(WithField("b3", 2), WithField("c3", 3))))
+        // scalastyle:on line.size.limit
+      )).as("a1"))
 
     checkRule(query, expected)
   }
@@ -787,15 +784,11 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
             GetStructField(dropA1A2B, 0), Seq(DropField("c3")))))).as("a1"))
     }
 
-    val expected = {
-      structLevel2.select(
-        UpdateFields('a1, Seq(
-          WithField("a2", UpdateFields(GetStructField('a1, 0), DropField("b3") :: Nil)),
-          WithField("a2", UpdateFields(
-            GetStructField('a1, 0),
-            DropField("b3") :: DropField("c3") :: Nil))
-        )).as("a1"))
-    }
+    val expected = structLevel2.select(
+      UpdateFields('a1, Seq(
+        WithField("a2", UpdateFields(GetStructField('a1, 0), Seq(DropField("b3")))),
+        WithField("a2", UpdateFields(GetStructField('a1, 0), Seq(DropField("b3"), DropField("c3"))))
+      )).as("a1"))
 
     checkRule(query, expected)
   }
