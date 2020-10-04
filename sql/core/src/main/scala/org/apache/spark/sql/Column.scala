@@ -1031,60 +1031,40 @@ class Column(val expr: Expression) extends Logging {
 
     val fieldName = namePartsRemaining.head
     if (namePartsRemaining.length == 1) {
-      val newValue = valueFunc(fieldName)
+      val newOp = valueFunc(fieldName)
       structExpr match {
-        case u: UpdateFields => u.copy(fieldOps = u.fieldOps :+ newValue)
-        case e => UpdateFields(e, newValue :: Nil)
+        case u: UpdateFields => u.copy(fieldOps = u.fieldOps :+ newOp)
+        case e => UpdateFields(e, newOp :: Nil)
       }
     } else {
-      val newValue = updateFieldsHelper(
+      val newOp = updateFieldsHelper(
         structExpr = UnresolvedExtractValue(structExpr, Literal(fieldName)),
         namePartsRemaining = namePartsRemaining.tail,
         valueFunc = valueFunc)
 
       structExpr match {
         case u: UpdateFields =>
-          // TODO: doesn't handle DropField case properly
+          // TODO: not sure if this handles DropField case properly
           findLastWithField(u.fieldOps, fieldName) match {
             case Some(withField) =>
-              val newValue = updateFieldsHelper(
-                structExpr = withField.valExpr,
-                namePartsRemaining = namePartsRemaining.tail,
-                valueFunc = valueFunc)
-              val newFieldOps = u.fieldOps.dropWhile(_ == withField) :+
-                WithField(fieldName, newValue)
-
+              val newOp = updateFieldsHelper(withField.valExpr, namePartsRemaining.tail, valueFunc)
+              val newFieldOps = u.fieldOps.dropWhile(_ == withField) :+ WithField(fieldName, newOp)
               u.copy(fieldOps = newFieldOps)
             case None =>
-              u.copy(fieldOps = u.fieldOps :+ WithField(fieldName, newValue))
+              u.copy(fieldOps = u.fieldOps :+ WithField(fieldName, newOp))
           }
-        case e =>
-          UpdateFields(e, WithField(fieldName, newValue) :: Nil)
+        case e => UpdateFields(e, WithField(fieldName, newOp) :: Nil)
       }
     }
   }
 
-  // 'a1.withField("a2.b3", lit(20)).withField("a2.c3", lit(30))
+  private val resolver = org.apache.spark.sql.internal.SQLConf.get.resolver
 
-//  // step 1
-//  val prev = UpdateFields(a1, Seq(WithField("a2",
-//    UpdateFields(UnresolvedExtractValue(a1, Literal("a2"))), Seq(WithField("b3", Literal(20)))))
-//  )
-//
-//  // step 2
-//  UpdateFields(prev, Seq(WithField("a2",
-//    UpdateFields(UnresolvedExtractValue(prev, Literal("a2"))), Seq(WithField("c3", Literal(20)))))
-//  )
-
-  def findLastWithField(
-      ops: Seq[StructFieldsOperation],
-      fieldName: String
-    ): Option[WithField] =
-    // TODO: should we really use collectFirst? or find? find_all? reverse?
+  def findLastWithField(ops: Seq[StructFieldsOperation], fieldName: String): Option[WithField] = {
     ops.reverse.collectFirst {
-      // TODO: use resolver
-      case w: WithField if fieldName == w.name => w
+      case w: WithField if resolver(fieldName, w.name) => w
     }
+  }
 
   /**
    * An expression that gets a field by name in a `StructType`.
