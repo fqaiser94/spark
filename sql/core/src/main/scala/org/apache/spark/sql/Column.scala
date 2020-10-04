@@ -1007,6 +1007,23 @@ class Column(val expr: Expression) extends Logging {
     }
   }
 
+//  private def updateFieldsHelper(
+//      structExpr: Expression,
+//      namePartsRemaining: Seq[String],
+//      valueFunc: String => StructFieldsOperation): UpdateFields = {
+//
+//    val fieldName = namePartsRemaining.head
+//    if (namePartsRemaining.length == 1) {
+//      UpdateFields(structExpr, valueFunc(fieldName) :: Nil)
+//    } else {
+//      val newValue = updateFieldsHelper(
+//        structExpr = UnresolvedExtractValue(structExpr, Literal(fieldName)),
+//        namePartsRemaining = namePartsRemaining.tail,
+//        valueFunc = valueFunc)
+//      UpdateFields(structExpr, WithField(fieldName, newValue) :: Nil)
+//    }
+//  }
+
   private def updateFieldsHelper(
       structExpr: Expression,
       namePartsRemaining: Seq[String],
@@ -1014,15 +1031,54 @@ class Column(val expr: Expression) extends Logging {
 
     val fieldName = namePartsRemaining.head
     if (namePartsRemaining.length == 1) {
-      UpdateFields(structExpr, valueFunc(fieldName) :: Nil)
+      val newValue = valueFunc(fieldName)
+      structExpr match {
+        case u: UpdateFields => u.copy(fieldOps = u.fieldOps :+ newValue)
+        case e => UpdateFields(e, newValue :: Nil)
+      }
     } else {
       val newValue = updateFieldsHelper(
         structExpr = UnresolvedExtractValue(structExpr, Literal(fieldName)),
         namePartsRemaining = namePartsRemaining.tail,
         valueFunc = valueFunc)
-      UpdateFields(structExpr, WithField(fieldName, newValue) :: Nil)
+
+      structExpr match {
+        case u: UpdateFields =>
+          // TODO: doesn't handle DropField case properly
+          findOpWithName(u.fieldOps, fieldName) match {
+            case Some(op) =>
+              u.copy(fieldOps = u.fieldOps.dropWhile(_ == op) :+ WithField(fieldName, newValue))
+            case None =>
+              u.copy(fieldOps = u.fieldOps :+ WithField(fieldName, newValue))
+          }
+        case e =>
+          UpdateFields(e, WithField(fieldName, newValue) :: Nil)
+      }
     }
   }
+
+  // 'a1.withField("a2.b3", lit(20)).withField("a2.c3", lit(30))
+
+//  // step 1
+//  val prev = UpdateFields(a1, Seq(WithField("a2",
+//    UpdateFields(UnresolvedExtractValue(a1, Literal("a2"))), Seq(WithField("b3", Literal(20)))))
+//  )
+//
+//  // step 2
+//  UpdateFields(prev, Seq(WithField("a2",
+//    UpdateFields(UnresolvedExtractValue(prev, Literal("a2"))), Seq(WithField("c3", Literal(20)))))
+//  )
+
+  def findOpWithName(
+      ops: Seq[StructFieldsOperation],
+      fieldName: String
+    ): Option[StructFieldsOperation] =
+    // TODO: should we really use collectFirst? or find? find_all? reverse?
+    ops.collectFirst {
+      // TODO: use resolver
+      case w: WithField if fieldName == w.name => w
+      case d: DropField if fieldName == d.name => d
+    }
 
   /**
    * An expression that gets a field by name in a `StructType`.

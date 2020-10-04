@@ -2264,4 +2264,30 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
     // TODO: test on a different struct
 
   }
+
+  test("temp2") {
+    checkAnswer(
+      structLevel2.select(col("a").withField("a.a", lit(10)).as("a")),
+      Row(Row(Row(10, null, 3))) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", IntegerType, nullable = false),
+            StructField("b", IntegerType, nullable = true),
+            StructField("c", IntegerType, nullable = false))),
+            nullable = false))),
+          nullable = false))))
+
+    checkAnswer(
+      structLevel2.select(col("a").withField("a.a", lit(10)).withField("a.b", lit(20)).as("a")),
+      Row(Row(Row(10, 20, 3))) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", IntegerType, nullable = false),
+            StructField("b", IntegerType, nullable = false),
+            StructField("c", IntegerType, nullable = false))),
+            nullable = false))),
+          nullable = false))))
+  }
 }
