@@ -221,7 +221,7 @@ class Analyzer(
       ResolveTables ::
       ResolveReferences ::
       ResolveCreateNamedStruct ::
-      ResolveUpdateFields ::
+      // ResolveUpdateFields ::
       ResolveDeserializer ::
       ResolveNewInstance ::
       ResolveUpCast ::

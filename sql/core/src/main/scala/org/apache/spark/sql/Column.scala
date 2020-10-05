@@ -1048,7 +1048,7 @@ class Column(val expr: Expression) extends Logging {
           findLastWithField(u.fieldOps, fieldName) match {
             case Some(withField) =>
               val newOp = updateFieldsHelper(withField.valExpr, namePartsRemaining.tail, valueFunc)
-              val newFieldOps = u.fieldOps :+ WithField(fieldName, newOp)
+              val newFieldOps = u.fieldOps.dropWhile(_ == withField) :+ WithField(fieldName, newOp)
               u.copy(fieldOps = newFieldOps)
             case None =>
               val newOp = updateFieldsHelper(

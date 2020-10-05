@@ -24,6 +24,7 @@ import org.apache.hadoop.io.{LongWritable, Text}
 import org.apache.hadoop.mapreduce.lib.input.{TextInputFormat => NewTextInputFormat}
 import org.scalatest.matchers.should.Matchers._
 
+import org.apache.spark.sql.UpdateFieldsBenchmark._
 import org.apache.spark.sql.catalyst.expressions.{InSet, Literal, NamedExpression}
 import org.apache.spark.sql.execution.ProjectExec
 import org.apache.spark.sql.functions._
@@ -920,6 +921,15 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
   test("SPARK-31563: sql of InSet for UTF8String collection") {
     val inSet = InSet(Literal("a"), Set("a", "b").map(UTF8String.fromString))
     assert(inSet.sql === "('a' IN ('a', 'b'))")
+  }
+
+  def checkAnswer(
+      df: => DataFrame,
+      expectedAnswer: Seq[Row],
+      expectedSchema: StructType): Unit = {
+    df.explain(true)
+    checkAnswer(df, expectedAnswer)
+    assert(df.schema == expectedSchema)
   }
 
   private lazy val structType = StructType(Seq(
@@ -2135,31 +2145,25 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
   }
 
   test("should move field up one level of nesting") {
-    val nullableStructLevel2: DataFrame = spark.createDataFrame(
-      sparkContext.parallelize(Row(Row(null)) :: Row(Row(Row(1, 2, 3))) :: Nil),
-      StructType(Seq(
-        StructField("a", StructType(Seq(
-          StructField("a", structType, nullable = true))),
-          nullable = true))))
-
     // move a field up one level
     checkAnswer(
       nullableStructLevel2.select(
-        col("a").withField("b", col("a.a.b")).dropFields("a.b").as("res")),
-      Row(Row(null, null)) ::  Row(Row(Row(1, 3), 2)) :: Nil,
+        col("a").withField("c", col("a.a.c")).dropFields("a.c").as("res")),
+      Row(null) :: Row(Row(null, null)) ::  Row(Row(Row(1, null), 3)) :: Nil,
       StructType(Seq(
         StructField("res", StructType(Seq(
           StructField("a", StructType(Seq(
             StructField("a", IntegerType, nullable = false),
-            StructField("c", IntegerType, nullable = false))),
+            StructField("b", IntegerType, nullable = true))),
             nullable = true),
-          StructField("b", IntegerType, nullable = true))),
+          StructField("c", IntegerType, nullable = true))),
           nullable = true))))
 
     // move a field up one level and then extract it
     checkAnswer(
-      nullableStructLevel2.select(col("a").withField("b", col("a.a.b")).getField("b").as("res")),
-      Row(null) :: Row(2) :: Nil,
+      nullableStructLevel2.select(
+        col("a").withField("c", col("a.a.c")).dropFields("a.c").getField("c").as("res")),
+      Row(null) :: Row(null) :: Row(3) :: Nil,
       StructType(Seq(StructField("res", IntegerType, nullable = true))))
   }
 
@@ -2217,6 +2221,87 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
         .select($"a".dropFields("c").as("a"))
         .select($"a".withField("z", $"a.c")).as("a")
     }.getMessage should include("No such struct field c in a, b;")
+  }
+
+  test("nestedDf should generate nested DataFrames") {
+    checkAnswer(
+      emptyNestedDf(1, 1, nullable = false),
+      Seq.empty[Row],
+      StructType(Seq(StructField("nested0Col0", StructType(Seq(
+        StructField("nested1Col0", IntegerType, nullable = false))),
+        nullable = false))))
+
+    checkAnswer(
+      emptyNestedDf(1, 2, nullable = false),
+      Seq.empty[Row],
+      StructType(Seq(StructField("nested0Col0", StructType(Seq(
+        StructField("nested1Col0", IntegerType, nullable = false),
+        StructField("nested1Col1", IntegerType, nullable = false))),
+        nullable = false))))
+
+    checkAnswer(
+      emptyNestedDf(2, 1, nullable = false),
+      Seq.empty[Row],
+      StructType(Seq(StructField("nested0Col0", StructType(Seq(
+        StructField("nested1Col0", StructType(Seq(
+          StructField("nested2Col0", IntegerType, nullable = false))),
+          nullable = false))),
+        nullable = false))))
+
+    checkAnswer(
+      emptyNestedDf(2, 2, nullable = false),
+      Seq.empty[Row],
+      StructType(Seq(StructField("nested0Col0", StructType(Seq(
+        StructField("nested1Col0", StructType(Seq(
+          StructField("nested2Col0", IntegerType, nullable = false),
+          StructField("nested2Col1", IntegerType, nullable = false))),
+          nullable = false),
+        StructField("nested1Col1", IntegerType, nullable = false))),
+        nullable = false))))
+
+    checkAnswer(
+      emptyNestedDf(2, 2, nullable = true),
+      Seq.empty[Row],
+      StructType(Seq(StructField("nested0Col0", StructType(Seq(
+        StructField("nested1Col0", StructType(Seq(
+          StructField("nested2Col0", IntegerType, nullable = false),
+          StructField("nested2Col1", IntegerType, nullable = false))),
+          nullable = true),
+        StructField("nested1Col1", IntegerType, nullable = false))),
+        nullable = true))))
+  }
+
+  Seq(Performant, NonPerformant).foreach { method =>
+    Seq(false, true).foreach { nullable =>
+      test(s"should add and drop 1 column at each depth of nesting using ${method.name} method, " +
+        s"nullable = $nullable") {
+        val maxDepth = 3
+
+        // dataframe with nested*Col0 to nested*Col2 at each depth
+        val inputDf = emptyNestedDf(maxDepth, 3, nullable)
+
+        // add nested*Col3 and drop nested*Col2
+        val modifiedColumn = method(
+          column = col(nestedColName(0, 0)),
+          numsToAdd = Seq(3),
+          numsToDrop = Seq(2),
+          maxDepth = maxDepth
+        ).as(nestedColName(0, 0))
+        val resultDf = inputDf.select(modifiedColumn)
+
+        // dataframe with nested*Col0, nested*Col1, nested*Col3 at each depth
+        val expectedDf = {
+          val colNums = Seq(0, 1, 3)
+          val nestedColumnDataType = nestedStructType(colNums, nullable, maxDepth)
+
+          spark.createDataFrame(
+            spark.sparkContext.emptyRDD[Row],
+            StructType(Seq(StructField(nestedColName(0, 0), nestedColumnDataType, nullable))))
+        }
+
+        checkAnswer(resultDf, expectedDf.collect(), expectedDf.schema)
+      }
+    }
   }
 
   test("temp") {

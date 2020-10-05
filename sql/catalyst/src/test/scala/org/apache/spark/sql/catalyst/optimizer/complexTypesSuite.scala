@@ -726,10 +726,8 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
 
     val expected = structLevel2.select(
       UpdateFields('a1, Seq(
-        // scalastyle:off line.size.limit
-        WithField("a2", UpdateFields(GetStructField('a1, 0), Seq(WithField("b3", 2)))),
-        WithField("a2", UpdateFields(GetStructField('a1, 0), Seq(WithField("b3", 2), WithField("c3", 3))))
-        // scalastyle:on line.size.limit
+        WithField("a2", UpdateFields(GetStructField('a1, 0), Seq(DropField("b3")))),
+        WithField("a2", UpdateFields(GetStructField('a1, 0), Seq(DropField("b3"), DropField("c3"))))
       )).as("a1"))
 
     checkRule(query, expected)
@@ -789,6 +787,43 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
         WithField("a2", UpdateFields(GetStructField('a1, 0), Seq(DropField("b3")))),
         WithField("a2", UpdateFields(GetStructField('a1, 0), Seq(DropField("b3"), DropField("c3"))))
       )).as("a1"))
+
+    checkRule(query, expected)
+  }
+
+  test("simplify drop multiple nested fields in nullable struct") {
+    // this scenario is possible if users drop multiple nested columns in a nullable struct
+    // using the Column.dropFields API in a non-performant way
+    val structLevel2 = LocalRelation(
+      'a1.struct(
+        'a2.struct('a3.int.notNull, 'b3.int.notNull, 'c3.int.notNull)
+      ))
+
+    val query = {
+      val dropA1A2B = UpdateFields('a1, Seq(WithField("a2", UpdateFields(
+        GetStructField('a1, 0), Seq(DropField("b3"))))))
+
+      structLevel2.select(
+        UpdateFields(
+          dropA1A2B,
+          Seq(WithField("a2", UpdateFields(
+            GetStructField(dropA1A2B, 0), Seq(DropField("c3")))))).as("a1"))
+    }
+
+    val expected = {
+      val repeatedExpr = UpdateFields(GetStructField('a1, 0), DropField("b3") :: Nil)
+      val repeatedExprDataType = StructType(Seq(
+        StructField("a3", IntegerType, nullable = false),
+        StructField("c3", IntegerType, nullable = false)))
+
+      structLevel2.select(
+        UpdateFields('a1, Seq(
+          WithField("a2", repeatedExpr),
+          WithField("a2", UpdateFields(
+            If(IsNull('a1), Literal(null, repeatedExprDataType), repeatedExpr),
+            DropField("c3") :: Nil))
+        )).as("a1"))
+    }
 
     checkRule(query, expected)
   }
