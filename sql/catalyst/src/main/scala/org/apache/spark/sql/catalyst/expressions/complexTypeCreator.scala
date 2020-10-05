@@ -545,7 +545,7 @@ case class StringToMap(text: Expression, pairDelim: Expression, keyValueDelim: E
 /**
  * Represents an operation to be applied to the fields of a struct.
  */
-trait StructFieldsOperation {
+sealed trait StructFieldsOperation {
 
   val resolver: Resolver = SQLConf.get.resolver
 

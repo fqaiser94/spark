@@ -1007,23 +1007,6 @@ class Column(val expr: Expression) extends Logging {
     }
   }
 
-//  private def updateFieldsHelper(
-//      structExpr: Expression,
-//      namePartsRemaining: Seq[String],
-//      valueFunc: String => StructFieldsOperation): UpdateFields = {
-//
-//    val fieldName = namePartsRemaining.head
-//    if (namePartsRemaining.length == 1) {
-//      UpdateFields(structExpr, valueFunc(fieldName) :: Nil)
-//    } else {
-//      val newValue = updateFieldsHelper(
-//        structExpr = UnresolvedExtractValue(structExpr, Literal(fieldName)),
-//        namePartsRemaining = namePartsRemaining.tail,
-//        valueFunc = valueFunc)
-//      UpdateFields(structExpr, WithField(fieldName, newValue) :: Nil)
-//    }
-//  }
-
   private def updateFieldsHelper(
       structExpr: Expression,
       namePartsRemaining: Seq[String],
@@ -1037,18 +1020,16 @@ class Column(val expr: Expression) extends Logging {
         case e => UpdateFields(e, newOp :: Nil)
       }
     } else {
-      val newOp = updateFieldsHelper(
-        structExpr = UnresolvedExtractValue(structExpr, Literal(fieldName)),
-        namePartsRemaining = namePartsRemaining.tail,
-        valueFunc = valueFunc)
-
       // TODO: not sure if this handles WithField + DropField cases properly
       structExpr match {
         case u: UpdateFields =>
           findLastWithField(u.fieldOps, fieldName) match {
             case Some(withField) =>
               val newOp = updateFieldsHelper(withField.valExpr, namePartsRemaining.tail, valueFunc)
-              val newFieldOps = u.fieldOps.dropWhile(_ == withField) :+ WithField(fieldName, newOp)
+              val newFieldOps = u.fieldOps.filter {
+                case w: WithField => !resolver(w.name, fieldName)
+                case _: DropField => true
+              } :+ WithField(fieldName, newOp)
               u.copy(fieldOps = newFieldOps)
             case None =>
               val newOp = updateFieldsHelper(
@@ -1069,10 +1050,10 @@ class Column(val expr: Expression) extends Logging {
 
   private val resolver = org.apache.spark.sql.internal.SQLConf.get.resolver
 
-  def findLastWithField(ops: Seq[StructFieldsOperation], fieldName: String): Option[WithField] = {
-    ops.reverse.collectFirst {
-      case w: WithField if resolver(fieldName, w.name) => w
-    }
+  private def findLastWithField(
+      ops: Seq[StructFieldsOperation],
+      fieldName: String): Option[WithField] = ops.reverse.collectFirst {
+    case w: WithField if resolver(fieldName, w.name) => w
   }
 
   /**

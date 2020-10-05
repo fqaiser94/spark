@@ -221,7 +221,6 @@ class Analyzer(
       ResolveTables ::
       ResolveReferences ::
       ResolveCreateNamedStruct ::
-      // ResolveUpdateFields ::
       ResolveDeserializer ::
       ResolveNewInstance ::
       ResolveUpCast ::
@@ -3646,30 +3645,6 @@ object ResolveCreateNamedStruct extends Rule[LogicalPlan] {
           kv
       }
       CreateNamedStruct(children.toList)
-  }
-}
-
-// TODO: understand why I still need this if the updateFields helper method should fix everything?
-// this is more of an optimization to simplify UpdateFields expressions early
-object ResolveUpdateFields extends Rule[LogicalPlan] {
-  override def apply(plan: LogicalPlan): LogicalPlan = plan resolveOperatorsDown {
-    case q: LogicalPlan => q transformExpressions {
-      case UpdateFields(UpdateFields(struct, fieldOps1), fieldOps2) =>
-        UpdateFields(struct, fieldOps1 ++ fieldOps2)
-      case UpdateFields(struct, fieldOps) =>
-        UpdateFields(struct, simplifier(fieldOps))
-    }
-  }
-
-  private val resolver = org.apache.spark.sql.internal.SQLConf.get.resolver
-
-  private def simplifier(ops: Seq[StructFieldsOperation]): Seq[StructFieldsOperation] = {
-    ops.foldLeft(Seq.empty[StructFieldsOperation]) {
-      case (Nil, op) => op :: Nil
-      // simplify same field being replaced
-      case ((w1: WithField) :: tail, w2: WithField) if resolver(w1.name, w2.name) => w2 :: tail
-      case (ops, op) => op +: ops
-    }.reverse
   }
 }
 

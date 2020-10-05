@@ -2444,4 +2444,30 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
             nullable = false))),
           nullable = false))))
   }
+
+  test("temp3") {
+    val maxDepth = 2
+    val method = NonPerformant
+    val nullable = true
+
+    val inputDf = emptyNestedDf(maxDepth, 3, nullable)
+
+    val modifiedColumn = method(
+      column = col(nestedColName(0, 0)),
+      numsToAdd = Seq(3, 4),
+      numsToDrop = Seq(1, 2),
+      maxDepth = maxDepth
+    ).as(nestedColName(0, 0))
+    val resultDf = inputDf.select(modifiedColumn)
+
+    val expectedDf = {
+      val colNums = Seq(0, 3, 4)
+      val nestedColumnDataType = nestedStructType(colNums, nullable, maxDepth)
+      spark.createDataFrame(
+        spark.sparkContext.emptyRDD[Row],
+        StructType(Seq(StructField(nestedColName(0, 0), nestedColumnDataType, nullable))))
+    }
+
+    checkAnswer(resultDf, expectedDf.collect(), expectedDf.schema)
+  }
 }
