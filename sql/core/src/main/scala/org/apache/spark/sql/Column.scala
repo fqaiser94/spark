@@ -1008,53 +1008,72 @@ class Column(val expr: Expression) extends Logging {
   }
 
   private def updateFieldsHelper(
-      structExpr: Expression,
-      namePartsRemaining: Seq[String],
-      valueFunc: String => StructFieldsOperation): UpdateFields = {
+    structExpr: Expression,
+    namePartsRemaining: Seq[String],
+    valueFunc: String => StructFieldsOperation): UpdateFields = {
 
     val fieldName = namePartsRemaining.head
     if (namePartsRemaining.length == 1) {
-      val newOp = valueFunc(fieldName)
-      structExpr match {
-        case u: UpdateFields => u.copy(fieldOps = u.fieldOps :+ newOp)
-        case e => UpdateFields(e, newOp :: Nil)
-      }
+      UpdateFields(structExpr, valueFunc(fieldName) :: Nil)
     } else {
-      // TODO: not sure if this handles WithField + DropField cases properly
-      structExpr match {
-        case u: UpdateFields =>
-          findLastWithField(u.fieldOps, fieldName) match {
-            case Some(withField) =>
-              val newOp = updateFieldsHelper(withField.valExpr, namePartsRemaining.tail, valueFunc)
-              val newFieldOps = u.fieldOps.filter {
-                case w: WithField => !resolver(w.name, fieldName)
-                case _: DropField => true
-              } :+ WithField(fieldName, newOp)
-              u.copy(fieldOps = newFieldOps)
-            case None =>
-              val newOp = updateFieldsHelper(
-                structExpr = UnresolvedExtractValue(u.structExpr, Literal(fieldName)),
-                namePartsRemaining = namePartsRemaining.tail,
-                valueFunc = valueFunc)
-              UpdateFields(u.structExpr, u.fieldOps :+ WithField(fieldName, newOp))
-          }
-        case e =>
-          val newOp = updateFieldsHelper(
-            structExpr = UnresolvedExtractValue(structExpr, Literal(fieldName)),
-            namePartsRemaining = namePartsRemaining.tail,
-            valueFunc = valueFunc)
-          UpdateFields(e, WithField(fieldName, newOp) :: Nil)
-      }
+      val newValue = updateFieldsHelper(
+        structExpr = UnresolvedExtractValue(structExpr, Literal(fieldName)),
+        namePartsRemaining = namePartsRemaining.tail,
+        valueFunc = valueFunc)
+      UpdateFields(structExpr, WithField(fieldName, newValue) :: Nil)
     }
   }
+
+//  private def updateFieldsHelper(
+//      structExpr: Expression,
+//      namePartsRemaining: Seq[String],
+//      valueFunc: String => StructFieldsOperation): UpdateFields = {
+//
+//    val fieldName = namePartsRemaining.head
+//    if (namePartsRemaining.length == 1) {
+//      val newOp = valueFunc(fieldName)
+//      structExpr match {
+//        case u: UpdateFields => u.copy(fieldOps = u.fieldOps :+ newOp)
+//        case e => UpdateFields(e, newOp :: Nil)
+//      }
+//    } else {
+//      structExpr match {
+//        case u: UpdateFields =>
+//          // TODO: this doesn't handle WithField + DropField cases properly,
+//          //  see `messing around with dropFields test`
+//          findLastWithField(u.fieldOps, fieldName) match {
+//            case Some(withField) =>
+//             val newOp = updateFieldsHelper(withField.valExpr, namePartsRemaining.tail, valueFunc)
+//              val newFieldOps = u.fieldOps.filter {
+//                case w: WithField => !resolver(w.name, fieldName)
+//                case _: DropField => true
+//              } :+ WithField(fieldName, newOp)
+//              u.copy(fieldOps = newFieldOps)
+//            case None =>
+//              val newOp = updateFieldsHelper(
+//                structExpr = UnresolvedExtractValue(u, Literal(fieldName)),
+//                namePartsRemaining = namePartsRemaining.tail,
+//                valueFunc = valueFunc)
+//              UpdateFields(u.structExpr, u.fieldOps :+ WithField(fieldName, newOp))
+//          }
+//        case e =>
+//          val newOp = updateFieldsHelper(
+//            structExpr = UnresolvedExtractValue(structExpr, Literal(fieldName)),
+//            namePartsRemaining = namePartsRemaining.tail,
+//            valueFunc = valueFunc)
+//          UpdateFields(e, WithField(fieldName, newOp) :: Nil)
+//      }
+//    }
+//  }
 
   private val resolver = org.apache.spark.sql.internal.SQLConf.get.resolver
 
   private def findLastWithField(
       ops: Seq[StructFieldsOperation],
-      fieldName: String): Option[WithField] = ops.reverse.collectFirst {
-    case w: WithField if resolver(fieldName, w.name) => w
-  }
+      fieldName: String): Option[WithField] = ops.reverse.collect {
+    case w: WithField if resolver(fieldName, w.name) => Some(w)
+    case d: DropField if resolver(fieldName, d.name) => None
+  }.head
 
   /**
    * An expression that gets a field by name in a `StructType`.

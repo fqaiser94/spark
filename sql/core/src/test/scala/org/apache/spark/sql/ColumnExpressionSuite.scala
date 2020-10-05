@@ -2445,6 +2445,38 @@ class ColumnExpressionSuite extends QueryTest with SharedSparkSession {
           nullable = false))))
   }
 
+  test("ordering okay") {
+    checkAnswer(
+      structLevel2.select(
+        col("a")
+          .withField("a.d", lit(4))
+          .withField("a.e", lit(5))
+          .withField("a.d", lit(6))
+          .as("a")),
+      Row(Row(Row(1, null, 3, 6, 5))) :: Nil,
+      StructType(Seq(
+        StructField("a", StructType(Seq(
+          StructField("a", StructType(Seq(
+            StructField("a", IntegerType, nullable = false),
+            StructField("b", IntegerType, nullable = true),
+            StructField("c", IntegerType, nullable = false),
+            StructField("d", IntegerType, nullable = false),
+            StructField("e", IntegerType, nullable = false))),
+            nullable = false))),
+          nullable = false))))
+  }
+
+  test("messing around with dropFields") {
+    intercept[AnalysisException] {
+      structLevel2.select(
+        col("a")
+          .withField("a.d", lit(4))
+          .dropFields("a")
+          .withField("a.d", lit(6))
+          .as("a"))
+    }.getMessage should include("cannot drop all fields in struct")
+  }
+
   test("temp3") {
     val maxDepth = 2
     val method = NonPerformant
