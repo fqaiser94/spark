@@ -207,10 +207,10 @@ object UpdateFieldsBenchmark extends SqlBasedBenchmark {
     // scales extremely poorly with the number of nested columns being added/dropped.
     updateFieldsBenchmark(
       methods = Seq(Performant, NonPerformant),
-      maxDepth = 10,
-      initialNumberOfColumns = 5,
-      numsToAdd = 5 to 6,
-      numsToDrop = 3 to 4)
+      maxDepth = 20,
+      initialNumberOfColumns = 51,
+      numsToAdd = 51 to 100,
+      numsToDrop = 1 to 50)
 
     // This benchmark is to show that the performant method of writing a query when we want to add
     // and drop a large number of nested columns scales nicely.

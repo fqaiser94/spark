@@ -1024,6 +1024,20 @@ class Column(val expr: Expression) extends Logging {
 //    }
 //  }
 
+//  private val init = UpdateFields(
+//    Column("a1").expr,
+//    Seq(WithField("a2", UpdateFields(
+//      UnresolvedExtractValue(Column("a1").expr, Literal("a2")),
+//      Seq(WithField("a3", Literal(10)))))))
+//
+//  // how can we avoid this nested structure?
+//  // This grows exponentially with each nested field being added
+//  private val next = UpdateFields(
+//    init,
+//    Seq(WithField("a2", UpdateFields(
+//      UnresolvedExtractValue(init, Literal("a2")),
+//      Seq(WithField("a4", Literal(20)))))))
+
   private def updateFieldsHelper(
       structExpr: Expression,
       namePartsRemaining: Seq[String],
@@ -1038,39 +1052,20 @@ class Column(val expr: Expression) extends Logging {
       }
     } else {
       structExpr match {
-        case u: UpdateFields =>
-          findLastOp(u.fieldOps, fieldName) match {
-            case Some(w: WithField) =>
-              val newOp = updateFieldsHelper(w.valExpr, namePartsRemaining.tail, valueFunc)
-              val newFieldOps = u.fieldOps :+ WithField(fieldName, newOp)
-              u.copy(fieldOps = newFieldOps)
-
-            case _ =>
-              val newOp = updateFieldsHelper(
-                structExpr = UnresolvedExtractValue(u, Literal(fieldName)),
-                namePartsRemaining = namePartsRemaining.tail,
-                valueFunc = valueFunc)
-              UpdateFields(u.structExpr, u.fieldOps :+ WithField(fieldName, newOp))
-          }
-
-        case _ =>
+        case u @ UpdateFields(_, fieldOps :+ (w: WithField)) if resolver(w.name, fieldName) =>
+          val newValExpr = updateFieldsHelper(w.valExpr, namePartsRemaining.tail, valueFunc)
+          u.copy(fieldOps = fieldOps :+ WithField(fieldName, newValExpr))
+        case e =>
           val newOp = updateFieldsHelper(
-            structExpr = UnresolvedExtractValue(structExpr, Literal(fieldName)),
+            structExpr = UnresolvedExtractValue(e, Literal(fieldName)),
             namePartsRemaining = namePartsRemaining.tail,
             valueFunc = valueFunc)
-          UpdateFields(structExpr, WithField(fieldName, newOp) :: Nil)
+          UpdateFields(e, WithField(fieldName, newOp) :: Nil)
       }
     }
   }
 
   private val resolver = org.apache.spark.sql.internal.SQLConf.get.resolver
-
-  private def findLastOp(
-      ops: Seq[StructFieldsOperation],
-      fieldName: String): Option[StructFieldsOperation] = ops.reverse.collectFirst {
-    case w: WithField if resolver(fieldName, w.name) => w
-    case d: DropField if resolver(fieldName, d.name) => d
-  }
 
   /**
    * An expression that gets a field by name in a `StructType`.
