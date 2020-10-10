@@ -1007,37 +1007,6 @@ class Column(val expr: Expression) extends Logging {
     }
   }
 
-//  private def updateFieldsHelper(
-//    structExpr: Expression,
-//    namePartsRemaining: Seq[String],
-//    valueFunc: String => StructFieldsOperation): UpdateFields = {
-//
-//    val fieldName = namePartsRemaining.head
-//    if (namePartsRemaining.length == 1) {
-//      UpdateFields(structExpr, valueFunc(fieldName) :: Nil)
-//    } else {
-//      val newValue = updateFieldsHelper(
-//        structExpr = UnresolvedExtractValue(structExpr, Literal(fieldName)),
-//        namePartsRemaining = namePartsRemaining.tail,
-//        valueFunc = valueFunc)
-//      UpdateFields(structExpr, WithField(fieldName, newValue) :: Nil)
-//    }
-//  }
-
-//  private val init = UpdateFields(
-//    Column("a1").expr,
-//    Seq(WithField("a2", UpdateFields(
-//      UnresolvedExtractValue(Column("a1").expr, Literal("a2")),
-//      Seq(WithField("a3", Literal(10)))))))
-//
-//  // how can we avoid this nested structure?
-//  // This grows exponentially with each nested field being added
-//  private val next = UpdateFields(
-//    init,
-//    Seq(WithField("a2", UpdateFields(
-//      UnresolvedExtractValue(init, Literal("a2")),
-//      Seq(WithField("a4", Literal(20)))))))
-
   private def updateFieldsHelper(
       structExpr: Expression,
       namePartsRemaining: Seq[String],
@@ -1056,11 +1025,11 @@ class Column(val expr: Expression) extends Logging {
           val newValExpr = updateFieldsHelper(w.valExpr, namePartsRemaining.tail, valueFunc)
           u.copy(fieldOps = fieldOps :+ WithField(fieldName, newValExpr))
         case e =>
-          val newOp = updateFieldsHelper(
+          val valExpr = updateFieldsHelper(
             structExpr = UnresolvedExtractValue(e, Literal(fieldName)),
             namePartsRemaining = namePartsRemaining.tail,
             valueFunc = valueFunc)
-          UpdateFields(e, WithField(fieldName, newOp) :: Nil)
+          UpdateFields(e, WithField(fieldName, valExpr) :: Nil)
       }
     }
   }
